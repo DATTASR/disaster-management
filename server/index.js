@@ -9,6 +9,10 @@ const { checkWeatherAndAlert } = require('./utils/weatherWatcher');
 // Import the Weather Utility
 const { getWeatherData } = require('./utils/weather');
 
+// '0.0.0.0' is a special address that tells Render's network 
+// that the app is ready to accept external traffic.
+
+
 const app = express();
 app.use(express.json());
 app.use(cors({
@@ -217,4 +221,9 @@ app.get('/api/weather/overview', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
+// '0.0.0.0' is a special address that tells Render's network 
+// that the app is ready to accept external traffic.
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server is running and listening on port ${PORT}`);
+});
