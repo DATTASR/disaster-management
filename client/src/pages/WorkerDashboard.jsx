@@ -141,7 +141,7 @@ const WorkerDashboard = () => {
   };
 
   const openNavigation = (loc) => {
-  // Corrected Google Maps URL format
+  // Standard Google Maps Direction URL
   const url = `https://www.google.com/maps/dir/?api=1&destination=${loc[0]},${loc[1]}`;
   window.open(url, '_blank');
 };

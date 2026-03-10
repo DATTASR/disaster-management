@@ -29,12 +29,8 @@ setInterval(() => {
 }, 1800000); // 30 minutes
 
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log("✅ Connected to MongoDB Atlas");
-  })
-  .catch(err => {
-    console.error("❌ Connection Error:", err);
-  });
+.then(() => console.log("✅ MongoDB Connected Successfully"))
+.catch(err => console.log("❌ Connection Error:", err));
 
 // --- USER & AUTH ROUTES ---
 
@@ -187,21 +183,25 @@ app.get('/test-weather', (req, res) => {
    res.send("Weather check triggered!");
 });
 
-// --- CITY OVERVIEW WEATHER ROUTE (THE GRID) ---
+// --- CITY OVERVIEW WEATHER ROUTE (THE GRID - UPDATED TO 10 ZONES) ---
 app.get('/api/weather/overview', async (req, res) => {
   const zones = [
-    { areaName: "Hitech City", lat: 17.4483, lon: 78.3915 },
-    { areaName: "Charminar", lat: 17.3616, lon: 78.4747 },
-    { areaName: "Secunderabad", lat: 17.4399, lon: 78.4983 },
-    { areaName: "Banjara Hills", lat: 17.4175, lon: 78.4433 },
-    { areaName: "Uppal", lat: 17.4022, lon: 78.5601 },
-    { areaName: "Kukatpally", lat: 17.4948, lon: 78.3997 }
+    { areaName: "Hitech City", lat: 17.4483, lon: 78.3915, zoneType: "Residential" },
+    { areaName: "Charminar", lat: 17.3616, lon: 78.4747, zoneType: "Residential" },
+    { areaName: "Secunderabad", lat: 17.4399, lon: 78.4983, zoneType: "Residential" },
+    { areaName: "Banjara Hills", lat: 17.4175, lon: 78.4433, zoneType: "Residential" },
+    { areaName: "Uppal", lat: 17.4022, lon: 78.5601, zoneType: "Residential" },
+    { areaName: "Kukatpally", lat: 17.4948, lon: 78.3997, zoneType: "Residential" },
+    { areaName: "Patancheru", lat: 17.5236, lon: 78.2674, zoneType: "Industrial" },
+    { areaName: "Jeedimetla", lat: 17.5133, lon: 78.4608, zoneType: "Industrial" },
+    { areaName: "Falaknuma", lat: 17.3304, lon: 78.4682, zoneType: "Residential" },
+    { areaName: "Moosapet", lat: 17.4697, lon: 78.4239, zoneType: "Residential" }
   ];
 
   try {
     const overview = await Promise.all(zones.map(async (zone) => {
-      // Fetch live weather using your existing utility
-      const weather = await getWeatherData(zone.lat, zone.lon);
+      // Pass the zoneType to the utility for Differentiated AQI logic
+      const weather = await getWeatherData(zone.lat, zone.lon, zone.zoneType);
       
       // Count active incidents specifically for this zone's area
       const incidents = await Report.countDocuments({

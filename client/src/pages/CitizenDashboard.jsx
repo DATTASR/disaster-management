@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Form, Button, InputGroup, Badge, ListGroup, Alert } from 'react-bootstrap';
 import AppNavbar from '../components/Navbar';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap, Rectangle } from 'react-leaflet'; 
-import { Navigation, Search, ImageIcon, Video, X, Clock, Send, AlertCircle, ShieldCheck, AlertTriangle } from 'lucide-react'; // Added AlertTriangle
+import { Navigation, Search, ImageIcon, Video, X, Clock, Send, AlertCircle, ShieldCheck, AlertTriangle } from 'lucide-react'; 
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -39,7 +39,7 @@ const CitizenDashboard = () => {
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [showForm, setShowForm] = useState(true); 
   const [myRequests, setMyRequests] = useState([]);
-  const [activeAlerts, setActiveAlerts] = useState([]); // NEW: State for proactive alerts
+  const [activeAlerts, setActiveAlerts] = useState([]); 
 
   const [formData, setFormData] = useState({
     fullName: currentUser.name || "", 
@@ -52,59 +52,45 @@ const CitizenDashboard = () => {
     details: {}
   });
 
-  // NEW: Fetch proactive alerts from backend
-  // --- NEW: LIVE WEATHER INTEGRATION ---
-const fetchAlerts = async () => {
-  // 1. First, keep fetching your custom admin-broadcasted alerts from your backend
-  try {
-    const adminRes = await fetch(`${API_BASE_URL}/api/alerts`
+  // --- UPDATED: FETCH ALERTS FROM BACKEND OVERVIEW (RESEARCH LOGIC) ---
+  const fetchAlerts = async () => {
+    try {
+      // 1. Fetch manual admin-broadcasted alerts
+      const adminRes = await fetch(`${API_BASE_URL}/api/alerts`);
+      const adminData = adminRes.ok ? await adminRes.json() : [];
+
+      // 2. Fetch the "City Overview" from our backend (Weather + AQI + Zone Logic)
+      const overviewRes = await fetch(`${API_BASE_URL}/api/weather/overview`);
       
-    );
-    if (adminRes.ok) {
-      const adminData = await adminRes.json();
-      
-      // 2. NOW, fetch LIVE weather for the current map position
-      // Replace 'YOUR_API_KEY' with a free key from openweathermap.org
-      const API_KEY = "YOUR_API_KEY"; 
-      const [lat, lon] = position;
-      const weatherRes = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`
-      );
+      if (overviewRes.ok) {
+        const zones = await overviewRes.json();
+        
+        // 3. Filter zones that are currently flagged as hazardous by our backend
+        const hazardZones = zones.filter(z => z.isHazardous);
 
-      if (weatherRes.ok) {
-        const weatherData = await weatherRes.json();
-        const condition = weatherData.weather[0].main; // e.g., "Rain", "Clear", "Thunderstorm"
-        const temp = weatherData.main.temp;
+        // 4. Transform hazard zones into alert objects for the UI
+        const automatedAlerts = hazardZones.map(zone => {
+  // Check for the "Chemical Washout" condition we added in weather.js
+  const isChemical = (zone.condition === 'Rain' || zone.condition === 'Drizzle') && zone.so2 > 80;
+  
+  return {
+    _id: `auto-${zone.areaName}`,
+    title: isChemical ? `⚠️ TOXIC HAZARD: ${zone.areaName}` : `⚠️ CRITICAL: ${zone.areaName}`,
+    severity: isChemical || zone.isHazardous ? "Red" : "Orange",
+    area: zone.type || "Regional", // Shows if it's an 'Industrial' or 'Residential' zone
+    message: isChemical 
+      ? `Acid Rain Risk! High SO2 (${zone.so2}) detected during rainfall. Stay indoors.` 
+      : `${zone.condition} alert. AQI: ${zone.pm25}. ${zone.temp}°C. Use caution.`
+  };
+});
 
-        // 3. Create a "Live" alert object if conditions are bad
-        let liveAlert = null;
-        if (condition === "Rain" || condition === "Thunderstorm" || condition === "Drizzle") {
-          liveAlert = {
-            _id: "live-weather-001",
-            title: `LIVE: ${condition} Detected`,
-            severity: "Orange",
-            area: "Current Location",
-            message: `Current temp ${temp}°C. Heavy rainfall may cause waterlogging. Please plan your route accordingly.`
-          };
-        } else if (temp > 40) {
-          liveAlert = {
-            _id: "live-weather-002",
-            title: "LIVE: Extreme Heat Warning",
-            severity: "Orange",
-            area: "Current Location",
-            message: "Temperatures are above 40°C. Stay hydrated and avoid outdoor reporting if possible."
-          };
-        }
-
-        // 4. Combine Admin alerts with our new Live Weather alert
-        const combinedAlerts = liveAlert ? [liveAlert, ...adminData] : adminData;
-        setActiveAlerts(combinedAlerts);
+        // Combine manual admin alerts with our automated hazard detections
+        setActiveAlerts([...automatedAlerts, ...adminData]);
       }
+    } catch (error) { 
+      console.error("Alert Sync Error:", error); 
     }
-  } catch (error) { 
-    console.error("Alert/Weather Sync Error:", error); 
-  }
-};
+  };
 
   const syncData = async () => {
     try {
@@ -121,11 +107,11 @@ const fetchAlerts = async () => {
 
   useEffect(() => {
     syncData();
-    fetchAlerts(); // Initial Alert fetch
+    fetchAlerts(); 
     const interval = setInterval(() => {
         syncData();
-        fetchAlerts(); // Check for new alerts every 5 seconds
-    }, 5000);
+        fetchAlerts(); 
+    }, 10000); // 10 second refresh for hazard monitoring
     return () => clearInterval(interval);
   }, []);
 
@@ -197,8 +183,6 @@ const fetchAlerts = async () => {
       const response = await fetch(`${API_BASE_URL}/api/reports`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-
-
         body: JSON.stringify(reportPayload),
       });
 
@@ -284,7 +268,7 @@ const fetchAlerts = async () => {
 
           <Col md={5} lg={4} className="bg-white shadow-lg overflow-auto p-4 border-start" style={{zIndex: 1001}}>
             
-            {/* --- NEW: PROACTIVE ALERTS SECTION --- */}
+            {/* --- PROACTIVE ALERTS (NOW BASED ON BACKEND RESEARCH LOGIC) --- */}
             {activeAlerts.length > 0 && activeAlerts.map(alert => (
               <Alert 
                 key={alert._id} 
@@ -301,7 +285,6 @@ const fetchAlerts = async () => {
                 </div>
               </Alert>
             ))}
-            {/* ------------------------------------ */}
 
             {showForm ? (
               <Form onSubmit={handleFinalSubmit}>
