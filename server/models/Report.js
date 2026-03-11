@@ -39,7 +39,8 @@ const ReportSchema = new mongoose.Schema({
   verifiedLocation: {
     lat: Number,
     lng: Number,
-    distanceFromSite: Number // Meters away when they marked "Arrived"
+    distanceFromSite: Number, // Meters away when they marked "Arrived"
+    verificationStatus: { type: String, enum: ["Verified", "Flagged"] } // Verification result V from Algorithm 2
   },
   // ------------------------------------------------------
 

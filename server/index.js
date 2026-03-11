@@ -100,22 +100,42 @@ app.post('/api/reports', async (req, res) => {
     const { loc } = req.body; 
 
     console.log("📡 Fetching weather for coordinates:", loc);
-    const weather = await getWeatherData(loc[0], loc[1]);
+    // Add logic to determine zoneType based on coords, or pass from frontend. Defaulting to Residential
+    // In a real scenario, you'd check a geo-fence. 
+    // Mapped roughly from EcoGuard PDF Strategy Zone Registry:
+    let zoneType = "Residential";
+    if (loc && ((loc[0] > 17.5 && loc[1] < 78.3) || (loc[0] > 17.5 && loc[1] < 78.47))) {
+       zoneType = "Industrial"; // Approx for Patancheru/Jeedimetla
+    }
+    const weather = await getWeatherData(loc[0], loc[1], zoneType);
+
+    // Algorithm 1: Compound Weather and AQI Hazard Evaluation
+    let severity = "Low";
+    if (weather) {
+      if (weather.isWeatherHazardous && weather.isAQIHazardous) {
+        severity = "Critical"; // Compound event
+      } else if (weather.isWeatherHazardous && req.body.type === "Flooding") {
+        severity = "High"; // Flash flood protocol
+      } else if (weather.isAQIHazardous && weather.zoneType === "Industrial") {
+        severity = "High"; // Industrial AQI alert
+      } else if (weather.isWeatherHazardous || weather.isAQIHazardous) {
+        severity = "Moderate";
+      }
+      
+      if (weather.aqiSeverity === "Critical") severity = "Critical";
+      if (weather.aqiSeverity === "High" && severity === "Low") severity = "High";
+    }
 
     const reportData = {
       ...req.body,
+      severity: severity,
       weatherContext: weather || { temp: 0, condition: "Unknown", isHazardous: false } 
     };
-
-    if (weather?.isHazardous && req.body.type === "Flooding") {
-      console.log("⚠️ Hazard detected! Boosting severity to High.");
-      reportData.severity = "High";
-    }
 
     const newReport = new Report(reportData);
     await newReport.save();
     
-    console.log("🚀 Report saved successfully!");
+    console.log("🚀 Report saved successfully with Severity:", severity);
     res.status(201).json(newReport);
   } catch (err) {
     console.error("Report Save Error:", err);
@@ -123,13 +143,59 @@ app.post('/api/reports', async (req, res) => {
   }
 });
 
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180); 
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2); 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  return R * c; // Distance in km
+}
+
 app.put('/api/reports/:id', async (req, res) => {
   try {
     const updatePayload = { ...req.body };
 
     if (req.body.status === "Arrived") {
-      updatePayload.arrivalTimestamp = new Date();
-      console.log(`📍 Verification: Worker arrived at site for report ${req.params.id}`);
+      const t_server = new Date();
+      updatePayload.arrivalTimestamp = t_server;
+      
+      const report = await Report.findById(req.params.id);
+      
+      // Algorithm 2: Geo-Fence Proximity Verification
+      if (report && report.loc && req.body.workerLat && req.body.workerLon) {
+        const d = getDistanceFromLatLonInKm(
+          req.body.workerLat, req.body.workerLon, 
+          report.loc[0], report.loc[1]
+        );
+        
+        let vStatus = "Flagged";
+        let timeValid = true;
+        if (req.body.t_client) {
+            const t_client = new Date(req.body.t_client);
+            if (Math.abs(t_server - t_client) > 5 * 60 * 1000) { // 5 minutes
+                timeValid = false;
+                console.log("⚠️ Timestamp Manipulation Flagged");
+            }
+        }
+
+        if (d <= 0.2 && timeValid) {
+            vStatus = "Verified";
+        }
+        
+        updatePayload.verifiedLocation = {
+            lat: req.body.workerLat,
+            lng: req.body.workerLon,
+            distanceFromSite: Math.round(d * 1000), // in meters
+            verificationStatus: vStatus
+        };
+        console.log(`📍 Verification Status: ${vStatus} (Distance: ${Math.round(d*1000)}m) for report ${req.params.id}`);
+      } else {
+        console.log(`📍 Verification: Worker arrived at site for report ${req.params.id} (No worker GPS data provided)`);
+      }
     }
 
     const updated = await Report.findByIdAndUpdate(req.params.id, updatePayload, { new: true });
