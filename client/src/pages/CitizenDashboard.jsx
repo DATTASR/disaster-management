@@ -269,22 +269,26 @@ const CitizenDashboard = () => {
           <Col md={5} lg={4} className="bg-white shadow-lg overflow-auto p-4 border-start" style={{zIndex: 1001}}>
             
             {/* --- PROACTIVE ALERTS (NOW BASED ON BACKEND RESEARCH LOGIC) --- */}
-            {activeAlerts.length > 0 && activeAlerts.map(alert => (
-              <Alert 
-                key={alert._id} 
-                variant={alert.severity === 'Red' ? 'danger' : alert.severity === 'Orange' ? 'warning' : 'info'} 
-                className="mb-3 border-2 shadow-sm d-flex align-items-center animate__animated animate__fadeInDown"
-              >
-                <AlertTriangle className="me-3 text-dark" size={28} />
-                <div>
-                  <div className="fw-bold d-flex align-items-center">
-                    {alert.title} 
-                    <Badge bg="dark" className="ms-2" style={{fontSize: '10px'}}>{alert.area}</Badge>
-                  </div>
-                  <div className="small text-dark">{alert.message}</div>
-                </div>
-              </Alert>
-            ))}
+            {activeAlerts.length > 0 && (
+              <div className="mb-4" style={{ maxHeight: '280px', overflowY: 'auto', paddingRight: '5px' }}>
+                {activeAlerts.map(alert => (
+                  <Alert 
+                    key={alert._id} 
+                    variant={alert.severity === 'Red' ? 'danger' : alert.severity === 'Orange' ? 'warning' : 'info'} 
+                    className="mb-2 border-2 shadow-sm d-flex align-items-center animate__animated animate__fadeInDown py-2"
+                  >
+                    <AlertTriangle className="me-3 text-dark flex-shrink-0" size={24} />
+                    <div>
+                      <div className="fw-bold d-flex align-items-center" style={{fontSize: '13px'}}>
+                        {alert.title} 
+                        <Badge bg="dark" className="ms-2" style={{fontSize: '9px'}}>{alert.area}</Badge>
+                      </div>
+                      <div className="text-dark" style={{fontSize: '11px', lineHeight: '1.2 mt-1'}}>{alert.message}</div>
+                    </div>
+                  </Alert>
+                ))}
+              </div>
+            )}
 
             {showForm ? (
               <Form onSubmit={handleFinalSubmit}>

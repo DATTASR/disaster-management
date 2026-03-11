@@ -7,35 +7,30 @@ const axios = require('axios');
  * @param {string} zoneType - "Industrial", "Residential", etc.
  */
 const getWeatherData = async (lat, lon, zoneType = "Residential") => {
-  const API_KEY = process.env.OPENWEATHER_API_KEY;
-  
-  // URL 1: Current Weather
-  const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
-  
-  // URL 2: Air Pollution (AQI)
-  const pollutionUrl = `https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${API_KEY}`;
-
   try {
-    // Fetch both datasets simultaneously for efficiency
-    const [weatherRes, pollutionRes] = await Promise.all([
-      axios.get(weatherUrl),
-      axios.get(pollutionUrl)
-    ]);
-
-    const wData = weatherRes.data;
-    const pData = pollutionRes.data.list[0]; // Get the first result from pollution list
-
-    const mainCondition = wData.weather[0].main;
-    const temp = wData.main.temp;
-    const windSpeed = wData.wind.speed * 3.6; // converting m/s to km/h as per PDF threshold
-    const pm25 = pData.components.pm2_5;
-    const pm10 = pData.components.pm10;
-    const no2 = pData.components.no2;
-    const so2 = pData.components.so2;
-    const o3 = pData.components.o3;
-    const co = pData.components.co / 1000; // API gives CO in µg/m³, PDF uses mg/m³
-    const nh3 = pData.components.nh3;
-    const aqi = pData.main.aqi;
+    // ---- MOCK DATA GENERATOR (OFFLINE/LOCAL MODE) ----
+    // This bypasses the need for an OpenWeatherMap API Key.
+    
+    // Simulate real-world variances for the dashboard
+    const temp = Math.floor(Math.random() * 15) + 30; // 30-45C
+    const windSpeed = Math.floor(Math.random() * 20); // 0-20 km/h
+    
+    // Industrial zones have inherently higher baselines in this simulation
+    const pm25 = zoneType === "Industrial" ? Math.floor(Math.random() * 100) + 100 : Math.floor(Math.random() * 50) + 20;
+    const pm10 = zoneType === "Industrial" ? Math.floor(Math.random() * 150) + 150 : Math.floor(Math.random() * 80) + 40;
+    const no2 = Math.floor(Math.random() * 100);
+    const so2 = zoneType === "Industrial" ? Math.floor(Math.random() * 100) + 50 : Math.floor(Math.random() * 30);
+    const o3 = Math.floor(Math.random() * 80);
+    const co = Math.random() * 5;
+    const nh3 = Math.random() * 10;
+    const aqi = zoneType === "Industrial" ? Math.floor(Math.random() * 3) + 3 : Math.floor(Math.random() * 2) + 1; // 1-5 scale
+    
+    // Randomize weather condition text
+    const conditions = ["Clear", "Clouds", "Rain", "Dust", "Haze"];
+    const mainCondition = conditions[Math.floor(Math.random() * conditions.length)];
+    const wData = { weather: [{ description: "Simulated weather" }], main: { humidity: Math.floor(Math.random() * 40) + 40 } };
+    
+    // --------------------------------------------------
 
     // 1. Weather Hazard Thresholds (Table 3 thresholds)
     const hazardousConditions = ["Rain", "Thunderstorm", "Tornado", "Squall", "Dust"];

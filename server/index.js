@@ -28,22 +28,20 @@ setInterval(() => {
   checkWeatherAndAlert();
 }, 1800000); // 30 minutes
 
-mongoose.connect(process.env.MONGO_URI)
-.then(() => console.log("✅ MongoDB Connected Successfully"))
-.catch(err => console.log("❌ Connection Error:", err));
+// IN-MEMORY MOCKS REPLACING MONGODB
+let usersMock = [];
+let reportsMock = [];
+let alertsMock = [];
+let reportIdCounter = 1;
+// ---------------------------------
 
 // --- USER & AUTH ROUTES ---
 
 app.post('/api/users', async (req, res) => {
     try {
         const { name, phone, aadhaar, role } = req.body;
-
-        const query = [{ name }, { phone }];
-        if (role === 'citizen' && aadhaar) {
-            query.push({ aadhaar });
-        }
-
-        const existingUser = await User.findOne({ $or: query });
+        
+        const existingUser = usersMock.find(u => u.name === name || u.phone === phone || (role === 'citizen' && u.aadhaar === aadhaar));
         
         if (existingUser) {
             let conflict = "Name or Phone";
@@ -51,8 +49,8 @@ app.post('/api/users', async (req, res) => {
             return res.status(400).json({ message: `${conflict} already registered.` });
         }
 
-        const newUser = new User(req.body);
-        await newUser.save();
+        const newUser = { _id: Date.now().toString(), ...req.body };
+        usersMock.push(newUser);
         
         res.status(201).json({ message: "Registration successful", user: newUser });
     } catch (err) {
@@ -64,7 +62,7 @@ app.post('/api/users', async (req, res) => {
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     try {
-        const user = await User.findOne({ name: username, password: password });
+        const user = usersMock.find(u => u.name === username && u.password === password);
         if (user) {
             res.json({ message: "Login successful", user });
         } else {
@@ -77,7 +75,7 @@ app.post('/api/login', async (req, res) => {
 
 app.get('/api/users/workers', async (req, res) => {
     try {
-        const workers = await User.find({ role: 'worker' });
+        const workers = usersMock.filter(u => u.role === 'worker');
         res.json(workers);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -88,8 +86,8 @@ app.get('/api/users/workers', async (req, res) => {
 
 app.get('/api/reports', async (req, res) => {
   try {
-    const reports = await Report.find().sort({ timestamp: -1 });
-    res.json(reports);
+    // Return mock reports sorted (reverse chronological conceptually)
+    res.json([...reportsMock].reverse());
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -128,15 +126,16 @@ app.post('/api/reports', async (req, res) => {
 
     const reportData = {
       ...req.body,
+      _id: (reportIdCounter++).toString(),
       severity: severity,
-      weatherContext: weather || { temp: 0, condition: "Unknown", isHazardous: false } 
+      weatherContext: weather || { temp: 0, condition: "Unknown", isHazardous: false },
+      timestamp: new Date()
     };
 
-    const newReport = new Report(reportData);
-    await newReport.save();
+    reportsMock.push(reportData);
     
     console.log("🚀 Report saved successfully with Severity:", severity);
-    res.status(201).json(newReport);
+    res.status(201).json(reportData);
   } catch (err) {
     console.error("Report Save Error:", err);
     res.status(400).json({ message: "Failed to submit report: " + err.message });
@@ -157,13 +156,15 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
 
 app.put('/api/reports/:id', async (req, res) => {
   try {
-    const updatePayload = { ...req.body };
+    let reportIndex = reportsMock.findIndex(r => r._id === req.params.id);
+    if (reportIndex === -1) return res.status(404).json({ message: "Report not found" });
+    
+    const report = reportsMock[reportIndex];
+    let updatePayload = { ...report, ...req.body };
 
     if (req.body.status === "Arrived") {
       const t_server = new Date();
       updatePayload.arrivalTimestamp = t_server;
-      
-      const report = await Report.findById(req.params.id);
       
       // Algorithm 2: Geo-Fence Proximity Verification
       if (report && report.loc && req.body.workerLat && req.body.workerLon) {
@@ -198,8 +199,8 @@ app.put('/api/reports/:id', async (req, res) => {
       }
     }
 
-    const updated = await Report.findByIdAndUpdate(req.params.id, updatePayload, { new: true });
-    res.json(updated);
+    reportsMock[reportIndex] = updatePayload;
+    res.json(updatePayload);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -210,15 +211,8 @@ app.put('/api/reports/:id', async (req, res) => {
 app.get('/api/alerts', async (req, res) => {
   try {
     const currentTime = new Date();
-    const activeAlerts = await Alert.find({
-      isActive: true,
-      $or: [
-        { expiresAt: { $exists: false } },
-        { expiresAt: { $gt: currentTime } }
-      ]
-    }).sort({ timestamp: -1 });
-    
-    res.json(activeAlerts);
+    const activeAlerts = alertsMock.filter(a => a.isActive && (!a.expiresAt || new Date(a.expiresAt) > currentTime));
+    res.json(activeAlerts.reverse());
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -226,8 +220,8 @@ app.get('/api/alerts', async (req, res) => {
 
 app.post('/api/alerts', async (req, res) => {
   try {
-    const newAlert = new Alert(req.body);
-    await newAlert.save();
+    const newAlert = { _id: Date.now().toString(), ...req.body };
+    alertsMock.push(newAlert);
     console.log("📢 Proactive Alert Broadcasted:", newAlert.title);
     res.status(201).json(newAlert);
   } catch (err) {
@@ -237,8 +231,13 @@ app.post('/api/alerts', async (req, res) => {
 
 app.put('/api/alerts/:id/deactivate', async (req, res) => {
   try {
-    const updated = await Alert.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
-    res.json(updated);
+    let alertIndex = alertsMock.findIndex(a => a._id === req.params.id);
+    if (alertIndex > -1) {
+        alertsMock[alertIndex].isActive = false;
+        res.json(alertsMock[alertIndex]);
+    } else {
+        res.status(404).json({ message: "Not found" });
+    }
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -266,15 +265,16 @@ app.get('/api/weather/overview', async (req, res) => {
 
   try {
     const overview = await Promise.all(zones.map(async (zone) => {
-      // Pass the zoneType to the utility for Differentiated AQI logic
+      // Passed the zoneType to the utility for Differentiated AQI logic
       const weather = await getWeatherData(zone.lat, zone.lon, zone.zoneType);
       
-      // Count active incidents specifically for this zone's area
-      const incidents = await Report.countDocuments({
-        status: { $ne: "Resolved" },
-        "loc.0": { $gte: zone.lat - 0.03, $lte: zone.lat + 0.03 },
-        "loc.1": { $gte: zone.lon - 0.03, $lte: zone.lon + 0.03 }
-      });
+      // Count active incidents from Memory
+      const incidents = reportsMock.filter(r => 
+        r.status !== "Resolved" && 
+        r.loc && 
+        r.loc[0] >= zone.lat - 0.03 && r.loc[0] <= zone.lat + 0.03 &&
+        r.loc[1] >= zone.lon - 0.03 && r.loc[1] <= zone.lon + 0.03
+      ).length;
 
       return { 
         ...zone, 
